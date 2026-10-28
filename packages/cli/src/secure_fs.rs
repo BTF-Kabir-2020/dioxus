@@ -109,7 +109,7 @@ mod tests {
 
         // The file is already owner-only while it is still empty.
         assert_eq!(mode(&path), 0o600);
-        assert!(std::fs::metadata(&path).unwrap().len() == 0);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "");
 
         drop(file);
     }

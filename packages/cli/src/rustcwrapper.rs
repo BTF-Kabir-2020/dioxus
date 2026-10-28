@@ -183,25 +183,28 @@ mod tests {
 
     #[test]
     fn captured_rustc_args_are_written_owner_only() {
+        // `.captured-args/<crate>.json` holds a verbatim `std::env::vars()`, so it can carry the
+        // user's tokens and must not be readable by other local users.
         let dir = tempfile::tempdir().unwrap();
-        let args_dir = dir.path().join("captured-args");
-        std::fs::create_dir_all(&args_dir).unwrap();
+        let args_dir = dir.path().join(".captured-args");
 
-        let rustc_args = RustcArgs {
-            args: vec![
-                "rustc".to_string(),
-                "--crate-name".to_string(),
-                "foo".to_string(),
-                "--crate-type".to_string(),
-                "bin".to_string(),
-            ],
-            envs: vec![],
-            cwd: dir.path().to_path_buf(),
-        };
+        write_rustc_args(
+            &args_dir,
+            &RustcArgs {
+                args: vec![
+                    "rustc".into(),
+                    "--crate-name".into(),
+                    "myapp".into(),
+                    "--crate-type".into(),
+                    "bin".into(),
+                ],
+                envs: vec![("SECRET_TOKEN".into(), "hunter2".into())],
+                cwd: PathBuf::new(),
+            },
+        );
 
-        write_rustc_args(&args_dir, &rustc_args);
-
-        let path = args_dir.join("foo.bin.json");
+        let path = args_dir.join("myapp.bin.json");
+        assert!(std::fs::read_to_string(&path).unwrap().contains("hunter2"));
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
     }
