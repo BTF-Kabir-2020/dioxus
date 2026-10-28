@@ -935,8 +935,11 @@ impl BuildRequest {
         _ = std::fs::File::create(self.link_err_file());
         _ = std::fs::File::create(self.link_args_file());
         // Create the env dump owner-only from the start, so there is no window
-        // in which a (possibly empty) file is readable by other users.
+        // in which a (possibly empty) file is readable by other users. `create_private`'s mode
+        // is ignored for a pre-existing file, so also tighten explicitly for a stale 0644 dump
+        // in a user-supplied --session-cache-dir.
         _ = crate::secure_fs::create_private(&self.link_env_file());
+        _ = crate::secure_fs::restrict_to_owner(&self.link_env_file());
         _ = std::fs::File::create(self.windows_command_file());
 
         if !matches!(ctx.mode, BuildMode::Thin { .. }) {

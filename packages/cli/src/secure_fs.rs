@@ -15,6 +15,12 @@ use std::path::Path;
 /// Unlike [`write_private`], this only creates the file and returns the handle, so callers can
 /// write to it later while the file is already owner-only from the moment it exists. This closes
 /// the window where a freshly created (but not yet written) dump is readable by other users.
+/// Create `path` (empty) with mode `0600` on unix.
+///
+/// This helper is deliberately chmod-free: the owner-only mode comes solely from the `O_CREAT`
+/// mode argument, so the regression test below pins that the create mode itself is `0600`
+/// (a chmod inside here would mask a regression of `options.mode(0o600)`). Callers that need
+/// to tighten a pre-existing (looser) file must call [`restrict_to_owner`] themselves.
 pub(crate) fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
@@ -25,26 +31,24 @@ pub(crate) fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
         options.mode(0o600);
     }
 
-    let file = options.open(path)?;
-
-    // `mode` only applies when the file is created; an existing looser file keeps its old mode.
-    restrict_to_owner(path);
-    Ok(file)
+    options.open(path)
 }
 
-/// Write `contents` to `path`, then restrict the file to its owner on unix.
+/// Write `contents` to `path`, owner-only on unix.
 ///
 /// The file is created with mode `0600` where the platform supports it, so there is no window in
-/// which a freshly written env dump is readable by other users. If the file already exists with
-/// looser permissions (both files are pre-created by `prebuild`), its mode is tightened as well.
+/// which a freshly written env dump is readable by other users. `OpenOptions::mode` is ignored for
+/// a file that already exists, so we chmod to `0600` *before* writing: `prebuild` pre-creates
+/// `link_env.json` with the umask's mode, and without this the dump would sit at `0644` for the
+/// whole duration of the write. If the file already exists with looser permissions, its mode is
+/// tightened as well.
 pub(crate) fn write_private(path: &Path, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
     use std::io::Write;
 
     let mut file = create_private(path)?;
-    file.write_all(contents.as_ref())?;
-
-    // Best-effort tightening again in case the file pre-existed with looser permissions.
+    // Tighten before any byte is written.
     restrict_to_owner(path);
+    file.write_all(contents.as_ref())?;
     Ok(())
 }
 
