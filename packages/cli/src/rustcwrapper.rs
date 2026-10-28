@@ -175,3 +175,34 @@ fn has_linking_args() -> bool {
 
     false
 }
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn captured_rustc_args_are_written_owner_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let args_dir = dir.path().join("captured-args");
+        std::fs::create_dir_all(&args_dir).unwrap();
+
+        let rustc_args = RustcArgs {
+            args: vec![
+                "rustc".to_string(),
+                "--crate-name".to_string(),
+                "foo".to_string(),
+                "--crate-type".to_string(),
+                "bin".to_string(),
+            ],
+            envs: vec![],
+            cwd: dir.path().to_path_buf(),
+        };
+
+        write_rustc_args(&args_dir, &rustc_args);
+
+        let path = args_dir.join("foo.bin.json");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+}

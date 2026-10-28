@@ -934,7 +934,9 @@ impl BuildRequest {
         _ = std::fs::create_dir_all(self.rustc_wrapper_args_scope_dir(&ctx.mode)?);
         _ = std::fs::File::create(self.link_err_file());
         _ = std::fs::File::create(self.link_args_file());
-        _ = std::fs::File::create(self.link_env_file());
+        // Create the env dump owner-only from the start, so there is no window
+        // in which a (possibly empty) file is readable by other users.
+        _ = crate::secure_fs::create_private(&self.link_env_file());
         _ = std::fs::File::create(self.windows_command_file());
 
         if !matches!(ctx.mode, BuildMode::Thin { .. }) {

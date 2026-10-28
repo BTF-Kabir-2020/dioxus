@@ -10,14 +10,12 @@
 
 use std::path::Path;
 
-/// Write `contents` to `path`, then restrict the file to its owner on unix.
+/// Create `path` (empty) and restrict it to its owner on unix.
 ///
-/// The file is created with mode `0600` where the platform supports it, so there is no window in
-/// which a freshly written env dump is readable by other users. If the file already exists with
-/// looser permissions (both files are pre-created by `prebuild`), its mode is tightened as well.
-pub(crate) fn write_private(path: &Path, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
-    use std::io::Write;
-
+/// Unlike [`write_private`], this only creates the file and returns the handle, so callers can
+/// write to it later while the file is already owner-only from the moment it exists. This closes
+/// the window where a freshly created (but not yet written) dump is readable by other users.
+pub(crate) fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
 
@@ -27,10 +25,25 @@ pub(crate) fn write_private(path: &Path, contents: impl AsRef<[u8]>) -> std::io:
         options.mode(0o600);
     }
 
-    let mut file = options.open(path)?;
+    let file = options.open(path)?;
+
+    // `mode` only applies when the file is created; an existing looser file keeps its old mode.
+    restrict_to_owner(path);
+    Ok(file)
+}
+
+/// Write `contents` to `path`, then restrict the file to its owner on unix.
+///
+/// The file is created with mode `0600` where the platform supports it, so there is no window in
+/// which a freshly written env dump is readable by other users. If the file already exists with
+/// looser permissions (both files are pre-created by `prebuild`), its mode is tightened as well.
+pub(crate) fn write_private(path: &Path, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let mut file = create_private(path)?;
     file.write_all(contents.as_ref())?;
 
-    // `mode` only applies when the file is created; an existing 0644 file keeps its old mode.
+    // Best-effort tightening again in case the file pre-existed with looser permissions.
     restrict_to_owner(path);
     Ok(())
 }
@@ -85,5 +98,19 @@ mod tests {
         write_private(&path, "[(\"LIB\",\"C:\\\\sdk\\\\lib\")]").unwrap();
 
         assert_eq!(mode(&path), 0o600);
+    }
+
+    #[test]
+    fn create_private_is_owner_only_before_anything_is_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("env.json");
+
+        let file = create_private(&path).unwrap();
+
+        // The file is already owner-only while it is still empty.
+        assert_eq!(mode(&path), 0o600);
+        assert!(std::fs::metadata(&path).unwrap().len() == 0);
+
+        drop(file);
     }
 }

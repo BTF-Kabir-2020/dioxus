@@ -1602,5 +1602,12 @@ mod tests {
         ];
         crate::write_link_envs(&path, envs.clone()).unwrap();
         assert_eq!(crate::read_link_envs(&path), envs);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
     }
 }
