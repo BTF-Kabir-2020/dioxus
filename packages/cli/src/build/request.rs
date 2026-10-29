@@ -939,7 +939,7 @@ impl BuildRequest {
         // is ignored for a pre-existing file, so also tighten explicitly for a stale 0644 dump
         // in a user-supplied --session-cache-dir.
         _ = crate::secure_fs::create_private(&self.link_env_file());
-        _ = crate::secure_fs::restrict_to_owner(&self.link_env_file());
+        crate::secure_fs::restrict_to_owner(&self.link_env_file());
         _ = std::fs::File::create(self.windows_command_file());
 
         if !matches!(ctx.mode, BuildMode::Thin { .. }) {

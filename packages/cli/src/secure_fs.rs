@@ -10,12 +10,11 @@
 
 use std::path::Path;
 
-/// Create `path` (empty) and restrict it to its owner on unix.
+/// Create `path` (empty) with mode `0600` on unix.
 ///
 /// Unlike [`write_private`], this only creates the file and returns the handle, so callers can
 /// write to it later while the file is already owner-only from the moment it exists. This closes
 /// the window where a freshly created (but not yet written) dump is readable by other users.
-/// Create `path` (empty) with mode `0600` on unix.
 ///
 /// This helper is deliberately chmod-free: the owner-only mode comes solely from the `O_CREAT`
 /// mode argument, so the regression test below pins that the create mode itself is `0600`
